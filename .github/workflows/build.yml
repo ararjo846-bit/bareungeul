@@ -1,0 +1,77 @@
+name: 바른글 빌드
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  apk:
+    name: 안드로이드 APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: 패키지 설치
+        run: npm install
+
+      - name: 웹 화면 만들기
+        run: node build.mjs
+
+      - name: 안드로이드 프로젝트 만들기
+        run: |
+          if [ ! -d android ]; then npx cap add android; fi
+          npx cap sync android
+
+      - name: 앱 아이콘 넣기
+        continue-on-error: true
+        run: npx --yes @capacitor/assets generate --android --iconBackgroundColor '#eef1f4' --splashBackgroundColor '#eef1f4'
+
+      - name: APK 빌드
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: 파일 이름 정리
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk bareungeul.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bareungeul-apk
+          path: bareungeul.apk
+
+  site:
+    name: 웹사이트 (GitHub Pages)
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node build.mjs
+      - uses: actions/configure-pages@v5
+        continue-on-error: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: www
+      - id: deploy
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
