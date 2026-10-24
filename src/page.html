@@ -1,0 +1,566 @@
+<title>바른글 맞춤법 검사기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+/* 교정지: 왼쪽은 원고, 오른쪽은 빨간 펜 교정 메모. 좁은 화면에서는 위아래로 쌓는다. */
+:root {
+  --paper: #eef1f4;
+  --sheet: #ffffff;
+  --ink: #1b2230;
+  --muted: #5b6577;
+  --line: #d7dde5;
+  --pen: #cf3a24;
+  --pen-soft: #fbe3de;
+  --space: #2a63c4;
+  --space-soft: #dfe8f8;
+  --style: #23805d;
+  --style-soft: #dcf0e6;
+  --ai: #7a4fc2;
+  --ai-soft: #ece4f8;
+  --btn-ink: #ffffff;
+  --shadow: 0 1px 2px rgba(27, 34, 48, .06), 0 8px 24px rgba(27, 34, 48, .06);
+  --f-display: "Gowun Batang", "Noto Serif KR", "AppleMyungjo", serif;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+  --f-text: "Gowun Batang", "Noto Serif KR", "AppleMyungjo", serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #11151b; --sheet: #191f28; --ink: #e5e9f0; --muted: #98a2b3; --line: #2b3441;
+    --pen: #ff6a52; --pen-soft: #4a221c; --space: #73a6ff; --space-soft: #1d2b46;
+    --style: #4cc795; --style-soft: #173a2c; --ai: #b593f5; --ai-soft: #2f2447; --btn-ink: #12161d;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #11151b; --sheet: #191f28; --ink: #e5e9f0; --muted: #98a2b3; --line: #2b3441;
+  --pen: #ff6a52; --pen-soft: #4a221c; --space: #73a6ff; --space-soft: #1d2b46;
+  --style: #4cc795; --style-soft: #173a2c; --ai: #b593f5; --ai-soft: #2f2447; --btn-ink: #12161d;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.55; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--space); outline-offset: 2px; }
+
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; }
+header.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.brand h1 { font-family: var(--f-display); font-size: 30px; font-weight: 700; margin: 0; letter-spacing: -.01em; line-height: 1.1; }
+.brand h1 .mark { color: var(--pen); }
+.brand p { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; }
+.icon-btn { white-space: nowrap; flex-shrink: 0; border: 1px solid var(--line); background: var(--sheet); border-radius: 10px; padding: 8px 12px; display: inline-flex; gap: 6px; align-items: center; font-size: 13.5px; }
+.icon-btn svg { width: 16px; height: 16px; }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+.sheet { background: var(--sheet); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); min-width: 0; }
+
+/* 원고 */
+.editor-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.editor-head .label { font-size: 12px; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.tool-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.link-btn { background: none; border: 0; color: var(--muted); font-size: 13px; padding: 4px 6px; border-radius: 6px; }
+.link-btn:hover { color: var(--ink); background: var(--paper); }
+
+.field { position: relative; padding: 18px 18px 8px; }
+.backdrop, #text {
+  font-family: var(--f-text); font-size: 17.5px; line-height: 1.9; letter-spacing: 0;
+  white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere; word-break: keep-all;
+  padding: 0; margin: 0; border: 0;
+}
+.backdrop { position: absolute; inset: 18px 18px 8px; color: transparent; pointer-events: none; }
+#text { position: relative; display: block; width: 100%; min-height: 260px; resize: none; background: transparent; outline: none; overflow: hidden; color: var(--ink); caret-color: var(--pen); }
+#text::placeholder { color: var(--muted); }
+.backdrop mark { color: transparent; border-radius: 3px; text-decoration-line: underline; text-decoration-thickness: 2px; text-underline-offset: 5px; }
+.backdrop mark.t-spell { background: var(--pen-soft); text-decoration-color: var(--pen); text-decoration-style: wavy; }
+.backdrop mark.t-space { background: var(--space-soft); text-decoration-color: var(--space); }
+.backdrop mark.t-style { background: var(--style-soft); text-decoration-color: var(--style); text-decoration-style: dotted; }
+.backdrop mark.active { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+.meter { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 10px 18px 14px; color: var(--muted); font-size: 12.5px; border-top: 1px dashed var(--line); font-variant-numeric: tabular-nums; }
+.meter b { color: var(--ink); font-weight: 600; }
+
+.actions { display: flex; gap: 8px; padding: 14px 16px 16px; flex-wrap: wrap; }
+.btn { border: 1px solid var(--line); background: var(--sheet); border-radius: 10px; padding: 11px 16px; font-weight: 600; font-size: 14.5px; display: inline-flex; align-items: center; gap: 8px; }
+.btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn.ai { background: var(--ai); color: var(--btn-ink); border-color: var(--ai); }
+.btn:disabled { opacity: .55; cursor: default; }
+.btn .sp { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .btn .sp { animation: none; } }
+.actions .grow { flex: 1 1 auto; }
+.ai-note { padding: 0 16px 14px; font-size: 12.5px; color: var(--muted); margin-top: -6px; }
+.ai-note.err { color: var(--pen); }
+
+/* 교정 메모 */
+.panel-head { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+.panel-head h2 { font-family: var(--f-display); font-size: 19px; margin: 0 0 10px; font-weight: 700; }
+.filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 4px 10px; font-size: 12.5px; display: inline-flex; gap: 6px; align-items: center; font-variant-numeric: tabular-nums; }
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.dot.spell { background: var(--pen); } .dot.space { background: var(--space); } .dot.style { background: var(--style); } .dot.ai { background: var(--ai); }
+.bulk { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+
+.list { list-style: none; margin: 0; padding: 6px 0; max-height: 640px; overflow-y: auto; }
+@media (max-width: 860px) { .list { max-height: none; } }
+.item { padding: 12px 16px; border-left: 3px solid transparent; display: grid; gap: 6px; }
+.item + .item { border-top: 1px solid var(--line); }
+.item.active { background: var(--paper); }
+.item.spell { border-left-color: var(--pen); } .item.space { border-left-color: var(--space); } .item.style { border-left-color: var(--style); }
+.item .meta { display: flex; gap: 6px; align-items: center; font-size: 11.5px; color: var(--muted); letter-spacing: .04em; }
+.tag { font-weight: 600; }
+.tag.spell { color: var(--pen); } .tag.space { color: var(--space); } .tag.style { color: var(--style); }
+.tag.ai { color: var(--ai); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; font-size: 10.5px; }
+.fix { font-family: var(--f-text); font-size: 16.5px; line-height: 1.6; overflow-wrap: anywhere; }
+.fix del { color: var(--muted); text-decoration-color: var(--pen); text-decoration-thickness: 1.5px; }
+.fix .arrow { color: var(--muted); margin: 0 6px; font-family: var(--f-body); }
+.fix ins { text-decoration: none; font-weight: 700; color: var(--ink); background: var(--style-soft); padding: 0 3px; border-radius: 3px; white-space: pre-wrap; }
+.fix .vis { color: var(--muted); font-size: 12px; font-family: var(--f-body); }
+.item p.why { margin: 0; font-size: 13.5px; color: var(--muted); }
+.item .row { display: flex; gap: 6px; }
+.mini { border: 1px solid var(--line); background: var(--sheet); border-radius: 8px; padding: 5px 12px; font-size: 13px; font-weight: 600; }
+.mini.go { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.empty { padding: 28px 16px; text-align: center; color: var(--muted); font-size: 14px; }
+.empty strong { display: block; font-family: var(--f-display); font-size: 18px; color: var(--ink); margin-bottom: 4px; }
+
+/* AI가 다듬은 글 */
+.revised { margin-top: 18px; }
+.revised .body { padding: 14px 18px; font-family: var(--f-text); font-size: 16.5px; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; }
+.revised .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.revised h3 { margin: 0; font-family: var(--f-display); font-size: 17px; }
+
+/* 설정 */
+.overlay { position: fixed; inset: 0; background: rgba(10, 14, 20, .45); display: flex; justify-content: center; align-items: flex-end; z-index: 30; padding-bottom: env(safe-area-inset-bottom, 0px); }
+@media (min-width: 620px) { .overlay { align-items: center; } }
+.dialog { background: var(--sheet); color: var(--ink); width: min(520px, 100%); border-radius: 16px 16px 0 0; padding: 20px max(18px, env(safe-area-inset-left, 0px)) 22px max(18px, env(safe-area-inset-right, 0px)); max-height: 90vh; overflow-y: auto; }
+@media (min-width: 620px) { .dialog { border-radius: 16px; } }
+.dialog h2 { margin: 0 0 4px; font-family: var(--f-display); font-size: 21px; }
+.dialog .sub { margin: 0 0 16px; color: var(--muted); font-size: 13.5px; }
+.set { display: grid; gap: 6px; margin-bottom: 16px; }
+.set label { font-weight: 600; font-size: 13.5px; }
+.set .hint { font-size: 12.5px; color: var(--muted); margin: 0; }
+.set input[type=password], .set input[type=text], .set select { border: 1px solid var(--line); background: var(--paper); border-radius: 9px; padding: 10px 12px; width: 100%; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { flex: 1; border: 0; background: transparent; padding: 9px 6px; font-size: 13.5px; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); font-weight: 600; }
+.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.switch input { width: 20px; height: 20px; accent-color: var(--ink); }
+.dialog .end { display: flex; justify-content: flex-end; gap: 8px; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 10px; font-size: 13.5px; z-index: 40; max-width: calc(100% - 32px); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 14px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.u { display: inline-block; width: 18px; height: 0; border-bottom: 2px solid; }
+.u.spell { border-color: var(--pen); border-bottom-style: solid; } .u.space { border-color: var(--space); } .u.style { border-color: var(--style); border-bottom-style: dotted; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>바른<span class="mark">글</span></h1>
+      <p>맞춤법·띄어쓰기를 바로잡고, 어색한 문장은 자연스럽게 다듬어 드려요.</p>
+    </div>
+    <button class="icon-btn" id="openSettings" type="button" aria-label="설정">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      설정
+    </button>
+  </header>
+
+  <div class="grid">
+    <section>
+      <div class="sheet">
+        <div class="editor-head">
+          <span class="label">원고</span>
+          <div class="tool-row">
+            <button class="link-btn" id="pasteHint" type="button">예문 넣기</button>
+            <button class="link-btn" id="copyText" type="button">복사</button>
+            <button class="link-btn" id="clearText" type="button">지우기</button>
+          </div>
+        </div>
+        <div class="field">
+          <div class="backdrop" id="backdrop" aria-hidden="true"></div>
+          <textarea id="text" spellcheck="false" autocomplete="off" placeholder="검사할 글을 붙여 넣거나 입력하세요." aria-label="검사할 글"></textarea>
+        </div>
+        <div class="meter" id="meter"></div>
+        <div class="actions">
+          <button class="btn primary" id="runCheck" type="button">맞춤법 검사</button>
+          <button class="btn ai" id="runAI" type="button">AI로 문장 다듬기</button>
+          <span class="grow"></span>
+        </div>
+        <p class="ai-note" id="aiNote"></p>
+      </div>
+      <div class="legend" aria-label="표시 안내">
+        <span><i class="u spell"></i>맞춤법·문법</span>
+        <span><i class="u space"></i>띄어쓰기</span>
+        <span><i class="u style"></i>어색한 표현</span>
+      </div>
+
+      <div class="sheet revised" id="revisedBox" hidden>
+        <div class="head">
+          <h3>AI가 다듬은 글</h3>
+          <div class="tool-row">
+            <button class="mini" id="copyRevised" type="button">복사</button>
+            <button class="mini go" id="useRevised" type="button">원고에 넣기</button>
+          </div>
+        </div>
+        <div class="body" id="revisedBody"></div>
+      </div>
+    </section>
+
+    <aside class="sheet" aria-label="교정 목록">
+      <div class="panel-head">
+        <h2>교정 메모</h2>
+        <div class="filters" id="filters"></div>
+      </div>
+      <div class="bulk">
+        <span id="bulkInfo"></span>
+        <button class="mini go" id="applyAll" type="button">모두 바꾸기</button>
+      </div>
+      <ul class="list" id="list"></ul>
+    </aside>
+  </div>
+</div>
+
+<div class="overlay" id="settings" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+    <h2 id="setTitle">설정</h2>
+    <p class="sub" id="envNote"></p>
+
+    <div class="set" id="keySet">
+      <label for="apiKey">Claude API 키</label>
+      <input type="password" id="apiKey" placeholder="sk-ant-로 시작하는 키" autocomplete="off">
+      <p class="hint">키는 이 기기에만 저장되고, 문장을 다듬을 때 Anthropic 서버로만 보내집니다. 키는 console.anthropic.com에서 만들 수 있어요.</p>
+    </div>
+    <div class="set" id="modelSet">
+      <label for="model">AI 모델</label>
+      <select id="model">
+        <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (정확함)</option>
+        <option value="claude-haiku-5-5">Claude Haiku 5.5 (빠르고 저렴함)</option>
+      </select>
+    </div>
+    <div class="set">
+      <label id="lvlLabel">AI 다듬기 강도</label>
+      <div class="seg" role="group" aria-labelledby="lvlLabel" id="level">
+        <button type="button" data-v="light">맞춤법 위주</button>
+        <button type="button" data-v="normal">자연스럽게</button>
+        <button type="button" data-v="strong">적극적으로</button>
+      </div>
+    </div>
+    <div class="set">
+      <div class="switch">
+        <label for="auto">입력하는 동안 자동 검사</label>
+        <input type="checkbox" id="auto">
+      </div>
+    </div>
+    <div class="end">
+      <button class="btn primary" id="closeSettings" type="button">저장</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>/*@RULES*/</script>
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const ta = $('text'), bd = $('backdrop'), list = $('list');
+  const TYPES = { spell: '맞춤법', space: '띄어쓰기', style: '표현' };
+  const SAMPLE = '오랫만에 친구를 만났는데 왠일인지 기분이 안좋았다. 내일 다시 연락할께요.\n이 문제에 있어서 우리는 보다 나은 방법을 찾을수 있다. 회의를 가지는 것이 필요합니다.\n몇일 전부터 설겆이를 하고있는데 금새 끝나서 그런거 같아요. 많은 사람들이 미리 예약했지만 저는 아직 안했어요.';
+
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('bareungeul.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('bareungeul.' + k, JSON.stringify(v)); } catch (e) {} },
+  };
+
+  const S = {
+    text: store.get('draft', SAMPLE),
+    rule: [], ai: [],
+    ignored: new Set(),
+    filter: 'all',
+    active: -1,
+    level: store.get('level', 'normal'),
+    auto: store.get('auto', true),
+    model: store.get('model', 'claude-sonnet-5-5'),
+    key: store.get('key', ''),
+    busy: false,
+  };
+
+  /* AI 연결: Claude 화면 안에서는 사용자 계정으로, 앱에서는 API 키로 */
+  const inClaude = !!(window.claude && typeof window.claude.use === 'function');
+  const samplePromise = inClaude ? window.claude.use('sample').catch(() => null) : Promise.resolve(null);
+
+  /* ───── 문제 목록 ───── */
+  const sig = (i) => i.type + '|' + i.orig + '|' + i.rep;
+  function issues() {
+    const ai = S.ai.filter((a) => !S.ignored.has(sig(a)));
+    const rules = S.rule.filter((r) => !S.ignored.has(sig(r)) && !ai.some((a) => r.start < a.end && a.start < r.end));
+    return ai.concat(rules).sort((a, b) => a.start - b.start || (a.long ? 1 : -1));
+  }
+  function visible(all) {
+    return S.filter === 'all' ? all : S.filter === 'ai' ? all.filter((i) => i.src === 'ai') : all.filter((i) => i.type === S.filter);
+  }
+
+  function runRules() { S.rule = KoSpell.check(S.text); }
+
+  /* ───── 화면 그리기 ───── */
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const show = (s) => s === '' ? '<span class="vis">(삭제)</span>' : esc(s).replace(/ /g, ' ').replace(/\n/g, '<span class="vis">↵</span>');
+
+  function renderBackdrop(all) {
+    const t = S.text; let out = '', pos = 0, last = -1;
+    all.forEach((i, idx) => {
+      if (i.long || i.start < last) return;
+      out += esc(t.slice(pos, i.start));
+      out += '<mark class="t-' + i.type + (idx === S.active ? ' active' : '') + '" data-i="' + idx + '">' + esc(t.slice(i.start, i.end)) + '</mark>';
+      pos = last = i.end;
+    });
+    bd.innerHTML = out + esc(t.slice(pos)) + ' ';
+  }
+
+  function renderMeter() {
+    const t = S.text, n = t.length, ns = t.replace(/\s/g, '').length;
+    const sheets = Math.max(0, Math.ceil(n / 200));
+    const sents = (t.match(/[^.!?\n]+[.!?]?/g) || []).filter((x) => x.trim()).length;
+    $('meter').innerHTML = '<span>공백 포함 <b>' + n.toLocaleString() + '</b>자</span><span>공백 제외 <b>' + ns.toLocaleString() + '</b>자</span><span>문장 <b>' + sents + '</b>개</span><span>원고지 <b>' + sheets + '</b>매</span>';
+  }
+
+  function renderFilters(all) {
+    const c = { all: all.length, spell: 0, space: 0, style: 0, ai: 0 };
+    all.forEach((i) => { c[i.type]++; if (i.src === 'ai') c.ai++; });
+    const defs = [['all', '전체', ''], ['spell', '맞춤법', 'spell'], ['space', '띄어쓰기', 'space'], ['style', '표현', 'style']];
+    if (c.ai) defs.push(['ai', 'AI 제안', 'ai']);
+    $('filters').innerHTML = defs.map(([k, label, dot]) => '<button class="chip" type="button" data-f="' + k + '" aria-pressed="' + (S.filter === k) + '">' + (dot ? '<i class="dot ' + dot + '"></i>' : '') + label + ' ' + c[k] + '</button>').join('');
+  }
+
+  function render() {
+    const all = issues();
+    if (S.active >= all.length) S.active = -1;
+    renderBackdrop(all);
+    renderMeter();
+    renderFilters(all);
+    const vis = visible(all);
+    const fixable = vis.filter((i) => i.rep != null).length;
+    $('bulkInfo').textContent = vis.length ? '고칠 곳 ' + vis.length + '개' + (fixable < vis.length ? ' · 조언 ' + (vis.length - fixable) + '개' : '') : '';
+    $('applyAll').hidden = fixable < 2;
+    if (!S.text.trim()) { list.innerHTML = '<li class="empty"><strong>글을 넣어 주세요</strong>붙여 넣으면 바로 검사합니다.</li>'; return; }
+    if (!vis.length) { list.innerHTML = '<li class="empty"><strong>고칠 곳을 찾지 못했어요</strong>문장을 더 다듬고 싶다면 ‘AI로 문장 다듬기’를 눌러 보세요.</li>'; return; }
+    list.innerHTML = vis.map((i) => {
+      const idx = all.indexOf(i);
+      return '<li class="item ' + i.type + (idx === S.active ? ' active' : '') + '" data-i="' + idx + '">' +
+        '<div class="meta"><span class="tag ' + i.type + '">' + TYPES[i.type] + '</span>' + (i.src === 'ai' ? '<span class="tag ai">AI</span>' : '') + '</div>' +
+        '<div class="fix">' + (i.rep == null ? '<span>' + show(i.long ? i.orig.slice(0, 40) + (i.orig.length > 40 ? '…' : '') : i.orig) + '</span>' : '<del>' + show(i.orig) + '</del><span class="arrow">→</span><ins>' + show(i.rep) + '</ins>') + '</div>' +
+        '<p class="why">' + esc(i.msg || '') + '</p>' +
+        '<div class="row">' + (i.rep != null ? '<button class="mini go" type="button" data-act="apply">바꾸기</button>' : '') + '<button class="mini" type="button" data-act="skip">건너뛰기</button></div></li>';
+    }).join('');
+  }
+
+  /* ───── 글 바꾸기 ───── */
+  function setText(t, keepAI) {
+    const old = S.text; S.text = t; ta.value = t; store.set('draft', t);
+    if (keepAI && S.ai.length) relocateAI(old); else if (!keepAI) S.ai = [];
+    runRules(); grow(); render();
+  }
+
+  function relocateAI() {
+    S.ai = S.ai.map((a) => {
+      if (S.text.slice(a.start, a.end) === a.orig) return a;
+      let best = -1, d = 1e9, p = S.text.indexOf(a.orig);
+      while (p !== -1) { if (Math.abs(p - a.start) < d) { d = Math.abs(p - a.start); best = p; } p = S.text.indexOf(a.orig, p + 1); }
+      return best < 0 ? null : Object.assign({}, a, { start: best, end: best + a.orig.length });
+    }).filter(Boolean);
+  }
+
+  function apply(i) {
+    const t = S.text;
+    if (t.slice(i.start, i.end) !== i.orig) { toast('글이 바뀌어 이 제안을 적용할 수 없어요.'); return; }
+    const delta = i.rep.length - (i.end - i.start);
+    S.ai = S.ai.filter((a) => a !== i && !(a.start < i.end && i.start < a.end)).map((a) => a.start >= i.end ? Object.assign({}, a, { start: a.start + delta, end: a.end + delta }) : a);
+    S.text = t.slice(0, i.start) + i.rep + t.slice(i.end);
+    ta.value = S.text; store.set('draft', S.text);
+    S.active = -1; runRules(); grow(); render();
+  }
+
+  function applyAll() {
+    const vis = visible(issues()).filter((i) => i.rep != null && !i.long);
+    let t = S.text, n = 0, lastStart = Infinity;
+    vis.sort((a, b) => b.start - a.start).forEach((i) => {
+      if (i.end > lastStart || t.slice(i.start, i.end) !== i.orig) return;
+      t = t.slice(0, i.start) + i.rep + t.slice(i.end); lastStart = i.start; n++;
+    });
+    S.ai = S.ai.filter((a) => !vis.includes(a));
+    setText(t, true);
+    toast(n + '곳을 바꿨어요.');
+  }
+
+  /* ───── AI ───── */
+  const LEVEL = {
+    light: '맞춤법·띄어쓰기·문법 오류만 고쳐라. 표현은 명백히 틀린 경우가 아니면 손대지 마라.',
+    normal: '맞춤법·띄어쓰기·문법 오류를 고치고, 어색하거나 번역투인 표현, 군더더기, 중복 표현을 자연스럽게 다듬어라. 문장 구조는 꼭 필요할 때만 바꿔라.',
+    strong: '맞춤법·띄어쓰기·문법 오류를 고치고, 어색한 문장은 더 읽기 쉽고 자연스러운 한국어 문장으로 적극적으로 고쳐 써라. 긴 문장은 나눠도 된다.',
+  };
+  function prompt(text) {
+    return '너는 한국어 교정·교열 전문가다. 아래 글을 검토하라.\n' + LEVEL[S.level] + '\n\n' +
+      '지킬 것:\n- 글쓴이의 뜻, 말투(존댓말·반말), 문체는 그대로 둔다.\n- 국립국어원 표준어 규정과 한글 맞춤법을 따른다.\n' +
+      '- edits의 original은 원문에 글자 하나 다르지 않게 그대로 있는 연속된 부분이어야 한다. 가능한 한 짧게(어절이나 구 단위) 잡고, 문장을 고쳐 쓸 때만 문장 전체를 잡는다.\n' +
+      '- type은 "맞춤법", "띄어쓰기", "문법", "표현" 중 하나.\n- reason은 왜 고치는지 한국어 한 문장.\n- 고칠 곳이 없으면 edits는 빈 배열.\n\n' +
+      '다음 형식의 JSON만 출력하라:\n{"edits":[{"original":"원문 부분","suggestion":"고친 말","type":"표현","reason":"이유"}],"revised":"모든 수정을 반영한 전체 글"}\n\n글:\n<<<\n' + text + '\n>>>';
+  }
+  function parseJSON(s) {
+    try { return JSON.parse(s); } catch (e) {}
+    const a = s.indexOf('{'), b = s.lastIndexOf('}');
+    if (a >= 0 && b > a) { try { return JSON.parse(s.slice(a, b + 1)); } catch (e) {} }
+    throw { code: 'invalid_json' };
+  }
+  async function askViaKey(text) {
+    if (!S.key) throw { code: 'no_key' };
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': S.key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: S.model, max_tokens: 8000, messages: [{ role: 'user', content: prompt(text) }] }),
+    });
+    if (!res.ok) {
+      let m = ''; try { m = (await res.json()).error.message; } catch (e) {}
+      throw { code: res.status === 401 ? 'bad_key' : res.status === 429 ? 'rate_limited' : 'http', message: m, status: res.status };
+    }
+    const j = await res.json();
+    return parseJSON((j.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(''));
+  }
+  const TYPE_MAP = { '맞춤법': 'spell', '문법': 'spell', '띄어쓰기': 'space', '표현': 'style' };
+
+  async function runAI() {
+    const text = S.text;
+    if (!text.trim()) { toast('먼저 글을 넣어 주세요.'); return; }
+    if (text.length > 20000) { note('한 번에 2만 자까지 다듬을 수 있어요. 글을 나눠서 넣어 주세요.', true); return; }
+    setBusy(true); note('AI가 문장을 읽고 있어요…');
+    try {
+      const sample = await samplePromise;
+      let out;
+      if (sample) out = await sample.json(prompt(text), { modelTier: S.level === 'strong' ? 'complex' : 'default' });
+      else if (inClaude) throw { code: 'not_granted' };
+      else out = await askViaKey(text);
+      if (S.text !== text) { note('검사하는 동안 글이 바뀌었어요. 다시 눌러 주세요.', true); return; }
+      const edits = Array.isArray(out && out.edits) ? out.edits : [];
+      let cursor = 0; const ai = [];
+      edits.forEach((e) => {
+        const o = String(e.original || ''), r = String(e.suggestion == null ? '' : e.suggestion);
+        if (!o || o === r) return;
+        let p = text.indexOf(o, cursor); if (p < 0) p = text.indexOf(o);
+        if (p < 0 || ai.some((a) => p < a.end && a.start < p + o.length)) return;
+        ai.push({ start: p, end: p + o.length, orig: o, rep: r, type: TYPE_MAP[e.type] || 'style', msg: String(e.reason || ''), src: 'ai' });
+        cursor = p + o.length;
+      });
+      S.ai = ai; S.filter = 'all';
+      const rev = typeof out.revised === 'string' ? out.revised.trim() : '';
+      $('revisedBox').hidden = !rev || rev === text.trim();
+      $('revisedBody').textContent = rev;
+      note(ai.length ? 'AI가 ' + ai.length + '곳을 제안했어요. 교정 메모에서 하나씩 고르거나, 다듬은 글을 통째로 쓸 수 있어요.' : 'AI도 고칠 곳을 찾지 못했어요. 잘 쓴 글이에요.');
+      render();
+    } catch (e) {
+      const c = e && e.code;
+      const msg = {
+        no_key: 'AI를 쓰려면 설정에서 Claude API 키를 넣어 주세요.',
+        bad_key: 'API 키가 맞지 않아요. 설정에서 키를 확인해 주세요.',
+        not_granted: '이 화면에서는 AI를 쓸 수 없어요. AI 사용을 허용했는지 확인해 주세요.',
+        sampling_disabled: '이 계정에서는 AI를 쓸 수 없어요.',
+        rate_limited: '요청이 너무 많아요. 잠시 뒤에 다시 눌러 주세요.',
+        invalid_json: 'AI 답을 읽지 못했어요. 다시 한 번 눌러 주세요.',
+        refused: 'AI가 이 글을 다듬지 않았어요. 내용을 바꿔서 다시 해 보세요.',
+        cancelled: '취소했어요.',
+        http: 'AI 서버 오류가 났어요(' + (e && e.status) + '). ' + ((e && e.message) || '잠시 뒤에 다시 해 보세요.'),
+      }[c] || (e instanceof TypeError ? '인터넷에 연결되어 있는지 확인해 주세요.' : 'AI 연결에 실패했어요. 잠시 뒤에 다시 해 보세요.');
+      note(msg, true);
+      if (c === 'no_key' || c === 'bad_key') openSettings();
+    } finally { setBusy(false); }
+  }
+  function setBusy(b) {
+    S.busy = b; const btn = $('runAI');
+    btn.disabled = b; btn.innerHTML = b ? '<i class="sp"></i>다듬는 중' : 'AI로 문장 다듬기';
+  }
+  function note(t, err) { const n = $('aiNote'); n.textContent = t; n.classList.toggle('err', !!err); }
+
+  /* ───── 기타 ───── */
+  let toastT;
+  function toast(t) { const el = $('toast'); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 2200); }
+  function grow() { ta.style.height = 'auto'; ta.style.height = Math.max(260, ta.scrollHeight) + 'px'; }
+  async function copy(t) {
+    try { await navigator.clipboard.writeText(t); toast('복사했어요.'); }
+    catch (e) { ta.focus(); ta.select(); toast('글을 선택했어요. 길게 눌러 복사하세요.'); }
+  }
+  function focusIssue(idx, scroll) {
+    S.active = idx; render();
+    if (scroll) {
+      const li = list.querySelector('.item[data-i="' + idx + '"]');
+      if (li) li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } else {
+      const mk = bd.querySelector('mark[data-i="' + idx + '"]');
+      if (mk) { const r = mk.getBoundingClientRect(); if (r.top < 60 || r.bottom > innerHeight - 40) window.scrollBy({ top: r.top - innerHeight / 3, behavior: 'smooth' }); }
+    }
+  }
+
+  let deb;
+  ta.addEventListener('input', () => {
+    S.text = ta.value; store.set('draft', S.text); grow();
+    clearTimeout(deb);
+    if (S.auto) deb = setTimeout(() => { relocateAI(); runRules(); render(); }, 250);
+    else { relocateAI(); S.rule = S.rule.filter((r) => S.text.slice(r.start, r.end) === r.orig); render(); }
+  });
+  const caretPick = () => {
+    const p = ta.selectionStart, all = issues();
+    const idx = all.findIndex((i) => !i.long && p >= i.start && p <= i.end);
+    if (idx !== -1 && idx !== S.active) focusIssue(idx, true);
+  };
+  ta.addEventListener('click', caretPick);
+  ta.addEventListener('keyup', (e) => { if (e.key.startsWith('Arrow')) caretPick(); });
+
+  list.addEventListener('click', (e) => {
+    const li = e.target.closest('.item'); if (!li) return;
+    const all = issues(), i = all[+li.dataset.i]; if (!i) return;
+    const act = e.target.closest('[data-act]');
+    if (act && act.dataset.act === 'apply') apply(i);
+    else if (act && act.dataset.act === 'skip') { S.ignored.add(sig(i)); S.active = -1; render(); }
+    else focusIssue(+li.dataset.i, false);
+  });
+  $('filters').addEventListener('click', (e) => { const b = e.target.closest('[data-f]'); if (b) { S.filter = b.dataset.f; S.active = -1; render(); } });
+  $('applyAll').addEventListener('click', applyAll);
+  $('runCheck').addEventListener('click', () => { S.ignored.clear(); runRules(); render(); const n = issues().length; toast(n ? n + '곳을 찾았어요.' : '고칠 곳을 찾지 못했어요.'); });
+  $('runAI').addEventListener('click', runAI);
+  $('pasteHint').addEventListener('click', () => { setText(SAMPLE); $('revisedBox').hidden = true; });
+  $('clearText').addEventListener('click', () => { setText(''); $('revisedBox').hidden = true; note(''); ta.focus(); });
+  $('copyText').addEventListener('click', () => copy(S.text));
+  $('copyRevised').addEventListener('click', () => copy($('revisedBody').textContent));
+  $('useRevised').addEventListener('click', () => { setText($('revisedBody').textContent); $('revisedBox').hidden = true; note('다듬은 글을 원고에 넣었어요.'); });
+
+  /* 설정 */
+  function openSettings() {
+    $('apiKey').value = S.key; $('model').value = S.model; $('auto').checked = S.auto;
+    [...$('level').children].forEach((b) => b.setAttribute('aria-pressed', b.dataset.v === S.level));
+    $('settings').hidden = false;
+  }
+  $('openSettings').addEventListener('click', openSettings);
+  $('level').addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (!b) return; [...$('level').children].forEach((x) => x.setAttribute('aria-pressed', x === b)); });
+  $('closeSettings').addEventListener('click', () => {
+    S.key = $('apiKey').value.trim(); S.model = $('model').value; S.auto = $('auto').checked;
+    const lv = $('level').querySelector('[aria-pressed="true"]'); if (lv) S.level = lv.dataset.v;
+    store.set('key', S.key); store.set('model', S.model); store.set('auto', S.auto); store.set('level', S.level);
+    $('settings').hidden = true; toast('저장했어요.');
+  });
+  $('settings').addEventListener('click', (e) => { if (e.target.id === 'settings') $('settings').hidden = true; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('settings').hidden = true; });
+
+  if (inClaude) {
+    $('keySet').hidden = true; $('modelSet').hidden = true;
+    $('envNote').textContent = 'AI 다듬기는 지금 보고 있는 Claude 계정으로 실행돼요. 처음 한 번 사용 허용을 묻습니다.';
+  } else {
+    $('envNote').textContent = '맞춤법 검사는 인터넷 없이 기기 안에서 돌아가요. AI 다듬기만 API 키가 필요합니다.';
+  }
+  samplePromise.then((s) => { if (inClaude && !s) note('이 화면에서는 AI 다듬기를 쓸 수 없어요. 맞춤법 검사는 그대로 쓸 수 있습니다.', true); });
+
+  ta.value = S.text; runRules(); grow(); render();
+  window.addEventListener('resize', grow);
+})();
+</script>

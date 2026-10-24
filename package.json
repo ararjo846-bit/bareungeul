@@ -1,0 +1,17 @@
+{
+  "name": "bareungeul",
+  "version": "1.0.0",
+  "private": true,
+  "description": "바른글 — 한국어 맞춤법 검사와 AI 문장 다듬기",
+  "scripts": {
+    "build": "node build.mjs",
+    "android": "node build.mjs && npx cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0"
+  }
+}

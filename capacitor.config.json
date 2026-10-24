@@ -1,0 +1,8 @@
+{
+  "appId": "com.bareungeul.app",
+  "appName": "바른글",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}

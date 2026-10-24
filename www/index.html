@@ -1,0 +1,883 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#eef1f4"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>바른글 맞춤법 검사기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+/* 교정지: 왼쪽은 원고, 오른쪽은 빨간 펜 교정 메모. 좁은 화면에서는 위아래로 쌓는다. */
+:root {
+  --paper: #eef1f4;
+  --sheet: #ffffff;
+  --ink: #1b2230;
+  --muted: #5b6577;
+  --line: #d7dde5;
+  --pen: #cf3a24;
+  --pen-soft: #fbe3de;
+  --space: #2a63c4;
+  --space-soft: #dfe8f8;
+  --style: #23805d;
+  --style-soft: #dcf0e6;
+  --ai: #7a4fc2;
+  --ai-soft: #ece4f8;
+  --btn-ink: #ffffff;
+  --shadow: 0 1px 2px rgba(27, 34, 48, .06), 0 8px 24px rgba(27, 34, 48, .06);
+  --f-display: "Gowun Batang", "Noto Serif KR", "AppleMyungjo", serif;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+  --f-text: "Gowun Batang", "Noto Serif KR", "AppleMyungjo", serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #11151b; --sheet: #191f28; --ink: #e5e9f0; --muted: #98a2b3; --line: #2b3441;
+    --pen: #ff6a52; --pen-soft: #4a221c; --space: #73a6ff; --space-soft: #1d2b46;
+    --style: #4cc795; --style-soft: #173a2c; --ai: #b593f5; --ai-soft: #2f2447; --btn-ink: #12161d;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #11151b; --sheet: #191f28; --ink: #e5e9f0; --muted: #98a2b3; --line: #2b3441;
+  --pen: #ff6a52; --pen-soft: #4a221c; --space: #73a6ff; --space-soft: #1d2b46;
+  --style: #4cc795; --style-soft: #173a2c; --ai: #b593f5; --ai-soft: #2f2447; --btn-ink: #12161d;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.55; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--space); outline-offset: 2px; }
+
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; }
+header.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.brand h1 { font-family: var(--f-display); font-size: 30px; font-weight: 700; margin: 0; letter-spacing: -.01em; line-height: 1.1; }
+.brand h1 .mark { color: var(--pen); }
+.brand p { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; }
+.icon-btn { white-space: nowrap; flex-shrink: 0; border: 1px solid var(--line); background: var(--sheet); border-radius: 10px; padding: 8px 12px; display: inline-flex; gap: 6px; align-items: center; font-size: 13.5px; }
+.icon-btn svg { width: 16px; height: 16px; }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+.sheet { background: var(--sheet); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); min-width: 0; }
+
+/* 원고 */
+.editor-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.editor-head .label { font-size: 12px; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.tool-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.link-btn { background: none; border: 0; color: var(--muted); font-size: 13px; padding: 4px 6px; border-radius: 6px; }
+.link-btn:hover { color: var(--ink); background: var(--paper); }
+
+.field { position: relative; padding: 18px 18px 8px; }
+.backdrop, #text {
+  font-family: var(--f-text); font-size: 17.5px; line-height: 1.9; letter-spacing: 0;
+  white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere; word-break: keep-all;
+  padding: 0; margin: 0; border: 0;
+}
+.backdrop { position: absolute; inset: 18px 18px 8px; color: transparent; pointer-events: none; }
+#text { position: relative; display: block; width: 100%; min-height: 260px; resize: none; background: transparent; outline: none; overflow: hidden; color: var(--ink); caret-color: var(--pen); }
+#text::placeholder { color: var(--muted); }
+.backdrop mark { color: transparent; border-radius: 3px; text-decoration-line: underline; text-decoration-thickness: 2px; text-underline-offset: 5px; }
+.backdrop mark.t-spell { background: var(--pen-soft); text-decoration-color: var(--pen); text-decoration-style: wavy; }
+.backdrop mark.t-space { background: var(--space-soft); text-decoration-color: var(--space); }
+.backdrop mark.t-style { background: var(--style-soft); text-decoration-color: var(--style); text-decoration-style: dotted; }
+.backdrop mark.active { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+.meter { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 10px 18px 14px; color: var(--muted); font-size: 12.5px; border-top: 1px dashed var(--line); font-variant-numeric: tabular-nums; }
+.meter b { color: var(--ink); font-weight: 600; }
+
+.actions { display: flex; gap: 8px; padding: 14px 16px 16px; flex-wrap: wrap; }
+.btn { border: 1px solid var(--line); background: var(--sheet); border-radius: 10px; padding: 11px 16px; font-weight: 600; font-size: 14.5px; display: inline-flex; align-items: center; gap: 8px; }
+.btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn.ai { background: var(--ai); color: var(--btn-ink); border-color: var(--ai); }
+.btn:disabled { opacity: .55; cursor: default; }
+.btn .sp { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .btn .sp { animation: none; } }
+.actions .grow { flex: 1 1 auto; }
+.ai-note { padding: 0 16px 14px; font-size: 12.5px; color: var(--muted); margin-top: -6px; }
+.ai-note.err { color: var(--pen); }
+
+/* 교정 메모 */
+.panel-head { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+.panel-head h2 { font-family: var(--f-display); font-size: 19px; margin: 0 0 10px; font-weight: 700; }
+.filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 4px 10px; font-size: 12.5px; display: inline-flex; gap: 6px; align-items: center; font-variant-numeric: tabular-nums; }
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.dot.spell { background: var(--pen); } .dot.space { background: var(--space); } .dot.style { background: var(--style); } .dot.ai { background: var(--ai); }
+.bulk { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+
+.list { list-style: none; margin: 0; padding: 6px 0; max-height: 640px; overflow-y: auto; }
+@media (max-width: 860px) { .list { max-height: none; } }
+.item { padding: 12px 16px; border-left: 3px solid transparent; display: grid; gap: 6px; }
+.item + .item { border-top: 1px solid var(--line); }
+.item.active { background: var(--paper); }
+.item.spell { border-left-color: var(--pen); } .item.space { border-left-color: var(--space); } .item.style { border-left-color: var(--style); }
+.item .meta { display: flex; gap: 6px; align-items: center; font-size: 11.5px; color: var(--muted); letter-spacing: .04em; }
+.tag { font-weight: 600; }
+.tag.spell { color: var(--pen); } .tag.space { color: var(--space); } .tag.style { color: var(--style); }
+.tag.ai { color: var(--ai); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; font-size: 10.5px; }
+.fix { font-family: var(--f-text); font-size: 16.5px; line-height: 1.6; overflow-wrap: anywhere; }
+.fix del { color: var(--muted); text-decoration-color: var(--pen); text-decoration-thickness: 1.5px; }
+.fix .arrow { color: var(--muted); margin: 0 6px; font-family: var(--f-body); }
+.fix ins { text-decoration: none; font-weight: 700; color: var(--ink); background: var(--style-soft); padding: 0 3px; border-radius: 3px; white-space: pre-wrap; }
+.fix .vis { color: var(--muted); font-size: 12px; font-family: var(--f-body); }
+.item p.why { margin: 0; font-size: 13.5px; color: var(--muted); }
+.item .row { display: flex; gap: 6px; }
+.mini { border: 1px solid var(--line); background: var(--sheet); border-radius: 8px; padding: 5px 12px; font-size: 13px; font-weight: 600; }
+.mini.go { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.empty { padding: 28px 16px; text-align: center; color: var(--muted); font-size: 14px; }
+.empty strong { display: block; font-family: var(--f-display); font-size: 18px; color: var(--ink); margin-bottom: 4px; }
+
+/* AI가 다듬은 글 */
+.revised { margin-top: 18px; }
+.revised .body { padding: 14px 18px; font-family: var(--f-text); font-size: 16.5px; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; }
+.revised .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.revised h3 { margin: 0; font-family: var(--f-display); font-size: 17px; }
+
+/* 설정 */
+.overlay { position: fixed; inset: 0; background: rgba(10, 14, 20, .45); display: flex; justify-content: center; align-items: flex-end; z-index: 30; padding-bottom: env(safe-area-inset-bottom, 0px); }
+@media (min-width: 620px) { .overlay { align-items: center; } }
+.dialog { background: var(--sheet); color: var(--ink); width: min(520px, 100%); border-radius: 16px 16px 0 0; padding: 20px max(18px, env(safe-area-inset-left, 0px)) 22px max(18px, env(safe-area-inset-right, 0px)); max-height: 90vh; overflow-y: auto; }
+@media (min-width: 620px) { .dialog { border-radius: 16px; } }
+.dialog h2 { margin: 0 0 4px; font-family: var(--f-display); font-size: 21px; }
+.dialog .sub { margin: 0 0 16px; color: var(--muted); font-size: 13.5px; }
+.set { display: grid; gap: 6px; margin-bottom: 16px; }
+.set label { font-weight: 600; font-size: 13.5px; }
+.set .hint { font-size: 12.5px; color: var(--muted); margin: 0; }
+.set input[type=password], .set input[type=text], .set select { border: 1px solid var(--line); background: var(--paper); border-radius: 9px; padding: 10px 12px; width: 100%; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { flex: 1; border: 0; background: transparent; padding: 9px 6px; font-size: 13.5px; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); font-weight: 600; }
+.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.switch input { width: 20px; height: 20px; accent-color: var(--ink); }
+.dialog .end { display: flex; justify-content: flex-end; gap: 8px; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 10px; font-size: 13.5px; z-index: 40; max-width: calc(100% - 32px); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 14px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.u { display: inline-block; width: 18px; height: 0; border-bottom: 2px solid; }
+.u.spell { border-color: var(--pen); border-bottom-style: solid; } .u.space { border-color: var(--space); } .u.style { border-color: var(--style); border-bottom-style: dotted; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>바른<span class="mark">글</span></h1>
+      <p>맞춤법·띄어쓰기를 바로잡고, 어색한 문장은 자연스럽게 다듬어 드려요.</p>
+    </div>
+    <button class="icon-btn" id="openSettings" type="button" aria-label="설정">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      설정
+    </button>
+  </header>
+
+  <div class="grid">
+    <section>
+      <div class="sheet">
+        <div class="editor-head">
+          <span class="label">원고</span>
+          <div class="tool-row">
+            <button class="link-btn" id="pasteHint" type="button">예문 넣기</button>
+            <button class="link-btn" id="copyText" type="button">복사</button>
+            <button class="link-btn" id="clearText" type="button">지우기</button>
+          </div>
+        </div>
+        <div class="field">
+          <div class="backdrop" id="backdrop" aria-hidden="true"></div>
+          <textarea id="text" spellcheck="false" autocomplete="off" placeholder="검사할 글을 붙여 넣거나 입력하세요." aria-label="검사할 글"></textarea>
+        </div>
+        <div class="meter" id="meter"></div>
+        <div class="actions">
+          <button class="btn primary" id="runCheck" type="button">맞춤법 검사</button>
+          <button class="btn ai" id="runAI" type="button">AI로 문장 다듬기</button>
+          <span class="grow"></span>
+        </div>
+        <p class="ai-note" id="aiNote"></p>
+      </div>
+      <div class="legend" aria-label="표시 안내">
+        <span><i class="u spell"></i>맞춤법·문법</span>
+        <span><i class="u space"></i>띄어쓰기</span>
+        <span><i class="u style"></i>어색한 표현</span>
+      </div>
+
+      <div class="sheet revised" id="revisedBox" hidden>
+        <div class="head">
+          <h3>AI가 다듬은 글</h3>
+          <div class="tool-row">
+            <button class="mini" id="copyRevised" type="button">복사</button>
+            <button class="mini go" id="useRevised" type="button">원고에 넣기</button>
+          </div>
+        </div>
+        <div class="body" id="revisedBody"></div>
+      </div>
+    </section>
+
+    <aside class="sheet" aria-label="교정 목록">
+      <div class="panel-head">
+        <h2>교정 메모</h2>
+        <div class="filters" id="filters"></div>
+      </div>
+      <div class="bulk">
+        <span id="bulkInfo"></span>
+        <button class="mini go" id="applyAll" type="button">모두 바꾸기</button>
+      </div>
+      <ul class="list" id="list"></ul>
+    </aside>
+  </div>
+</div>
+
+<div class="overlay" id="settings" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+    <h2 id="setTitle">설정</h2>
+    <p class="sub" id="envNote"></p>
+
+    <div class="set" id="keySet">
+      <label for="apiKey">Claude API 키</label>
+      <input type="password" id="apiKey" placeholder="sk-ant-로 시작하는 키" autocomplete="off">
+      <p class="hint">키는 이 기기에만 저장되고, 문장을 다듬을 때 Anthropic 서버로만 보내집니다. 키는 console.anthropic.com에서 만들 수 있어요.</p>
+    </div>
+    <div class="set" id="modelSet">
+      <label for="model">AI 모델</label>
+      <select id="model">
+        <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (정확함)</option>
+        <option value="claude-haiku-5-5">Claude Haiku 5.5 (빠르고 저렴함)</option>
+      </select>
+    </div>
+    <div class="set">
+      <label id="lvlLabel">AI 다듬기 강도</label>
+      <div class="seg" role="group" aria-labelledby="lvlLabel" id="level">
+        <button type="button" data-v="light">맞춤법 위주</button>
+        <button type="button" data-v="normal">자연스럽게</button>
+        <button type="button" data-v="strong">적극적으로</button>
+      </div>
+    </div>
+    <div class="set">
+      <div class="switch">
+        <label for="auto">입력하는 동안 자동 검사</label>
+        <input type="checkbox" id="auto">
+      </div>
+    </div>
+    <div class="end">
+      <button class="btn primary" id="closeSettings" type="button">저장</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>/* 바른글 — 오프라인 맞춤법·띄어쓰기·표현 규칙 엔진 */
+(function (root) {
+  'use strict';
+
+  // 한글 음절의 받침 번호 (0: 없음, 4: ㄴ, 8: ㄹ)
+  function jong(ch) {
+    const c = ch ? ch.charCodeAt(0) - 0xac00 : -1;
+    return c >= 0 && c < 11172 ? c % 28 : -1;
+  }
+
+  const H = '[가-힣]';
+  const NB = '(?<![가-힣])'; // 앞이 한글 아님 (단어 시작)
+  const NA = '(?![가-힣])';  // 뒤가 한글 아님 (단어 끝)
+
+  // 용언 관형형·미래형으로 자주 쓰이는 음절
+  const VL = '할|갈|볼|올|줄|될|쓸|탈|놀|알|살|잘|울|을|릴|칠|찰|낼|둘|설|열|일|들|날|질|길|실';
+  const VN = '한|된|간|온|본|산|쓴|탄|은|는|던|인|운|른|런|난|진|친|린|긴|신|든|낸|만든|이런|그런|저런|다른';
+  const GEO_FOLLOW = '(?=야|예요|에요|같|아|면|다|임|니|라|고|를|가|도|만|요|[\\s.,!?~…]|$)';
+
+  /*
+   * 규칙: [유형, 정규식, 바꿀 말(문자열 또는 함수), 설명, 추가 검사(선택)]
+   * 유형: spell(맞춤법) · space(띄어쓰기) · style(표현)
+   * 바꿀 말이 null이면 고칠 말 없이 조언만 보여 준다.
+   */
+  const R = [];
+  const add = (type, re, rep, msg, test) => R.push({ type, re: new RegExp(re, 'g'), rep, msg, test });
+
+  /* ───────── 맞춤법 ───────── */
+  // 되/돼
+  add('spell', '안되요' + NA, '안 돼요', "'되어요'의 준말은 '돼요'이고, 부정의 '안'은 띄어 씁니다.");
+  add('spell', '안되서', '안 돼서', "'되어서'의 준말은 '돼서'입니다.");
+  add('spell', '되요' + NA, '돼요', "'되어요'가 줄면 '돼요'가 됩니다.");
+  add('spell', '되서' + NA, '돼서', "'되어서'가 줄면 '돼서'가 됩니다.");
+  add('spell', '됬', '됐', "'되었'이 줄면 '됐'입니다.");
+  add('spell', '됀', '된', "'되다'의 관형형은 '된'입니다.");
+  add('spell', '뵈요' + NA, '봬요', "'뵈어요'가 줄면 '봬요'가 됩니다.");
+  add('spell', '봽', '뵙', "'뵙다'가 바른 말입니다.");
+  // 왠/웬
+  add('spell', '왠일', '웬일', "'어찌 된'이라는 뜻일 때는 '웬'을 씁니다. '왠지'만 '왠'입니다.");
+  add('spell', '왠만', '웬만', "'웬만하다'가 바른 말입니다.");
+  add('spell', '웬지', '왠지', "'왜인지'가 줄어든 말이라 '왠지'로 씁니다.");
+  // ㄹ게 / ㄹ걸 / ㄹ 거
+  add('spell', '(' + VL + ')께(요)?' + NA, '$1게$2', "어미 '-ㄹ게'는 [께]로 소리 나도 '게'로 적습니다.");
+  add('spell', '(' + VL + ')껄' + NA, '$1걸', "어미 '-ㄹ걸'은 '걸'로 적습니다.");
+  add('spell', '(' + VL + ')껀(데|지|가)', '$1 건$2', "'것인데'의 준말은 '건데'이고, 앞말과 띄어 씁니다.");
+  add('spell', '(' + VL + ') ?꺼(야|예요|에요|라|임|니|면|든|지|다|고)?' + NA, '$1 거$2', "의존 명사 '것'의 구어형은 '거'로 적고 앞말과 띄어 씁니다.");
+  add('spell', NB + '(내|니|너|제|남|우리|네)꺼(야|예요|에요|다|지|라|임|니|는|를|도|만)?' + NA, '$1 거$2', "'것'의 구어형은 '거'이고 앞말과 띄어 씁니다.");
+  add('spell', '꺼(예요|에요)', '거예요', "'거'에 '이에요'가 붙으면 '거예요'가 됩니다.");
+  add('spell', '거에요' + NA, '거예요', "받침 없는 말 뒤에는 '예요'를 씁니다. '거' + '이에요' → '거예요'.");
+  add('spell', '아니예요', '아니에요', "'아니다'의 어간 뒤에는 '-에요'가 붙습니다.");
+  // -려고
+  add('spell', '을려(고|면|는|다가?)', '으려$1', "'-으려고'가 바른 형태입니다. 'ㄹ'을 덧붙이지 않습니다.");
+  add('spell', NB + '(할|갈|볼|될|줄|올|쓸|탈|잘)려(고|면|는|다가?)', (m) => syl(m[1], 0) + '려' + m[2], "'-려고' 앞에 'ㄹ'을 덧붙이지 않습니다.");
+  add('spell', '([가-힣])ㄹ려고', '$1려고', "'-려고' 앞에 'ㄹ'을 덧붙이지 않습니다.");
+  // 않/안
+  add('spell', '지 안(았|아|으|고|는|다|을|은|게|겠)', '지 않$1', "'-지 않다'처럼 용언 뒤에서는 '않'을 씁니다.");
+  add('spell', NB + '않 ?(해|돼|되|가|와|먹|한|할|하|봐|보|줘|주|써|쓰|된|될|간|갈)', '안 $1', "동사 앞에서 부정할 때는 '아니'의 준말 '안'을 씁니다.");
+  // 이/히
+  add('spell', '깨끗히', '깨끗이', "'ㅅ' 받침 뒤에는 '-이'를 씁니다.");
+  add('spell', '곰곰히', '곰곰이', "'곰곰이'가 바른 말입니다.");
+  add('spell', '틈틈히', '틈틈이', "첩어 뒤에는 '-이'를 씁니다.");
+  add('spell', '번번히', '번번이', "첩어 뒤에는 '-이'를 씁니다.");
+  add('spell', '일일히', '일일이', "첩어 뒤에는 '-이'를 씁니다.");
+  add('spell', '따뜻히', '따뜻이', "'ㅅ' 받침 뒤에는 '-이'를 씁니다.");
+  add('spell', '솔직이', '솔직히', "'-하다'가 붙는 말은 대개 '-히'로 씁니다.");
+  add('spell', '꼼꼼이', '꼼꼼히', "'꼼꼼하다'에서 온 말이라 '꼼꼼히'로 씁니다.");
+  add('spell', '정확이', '정확히', "'정확하다'에서 온 말이라 '정확히'로 씁니다.");
+  add('spell', '열심이' + NA, '열심히', "'열심히'가 바른 말입니다.", (m, s) => !/[가-힣]$/.test(s.slice(0, m.index)));
+  // 자주 틀리는 낱말
+  const words = [
+    ['몇일', '며칠', "'몇 일'이 아니라 '며칠'이 표준어입니다."],
+    ['몇 일', '며칠', "'며칠'이 표준어입니다."],
+    ['희안', '희한', "'희한하다'가 바른 말입니다."],
+    ['희얀', '희한', "'희한하다'가 바른 말입니다."],
+    ['설겆이', '설거지', "'설거지'가 표준어입니다."],
+    ['금새', '금세', "'금시에'가 줄어든 말이라 '금세'입니다."],
+    ['오랫만', '오랜만', "'오래간만'의 준말은 '오랜만'입니다."],
+    ['오랜동안', '오랫동안', "'오랫동안'이 바른 말입니다."],
+    ['역활', '역할', "'역할(役割)'이 바른 말입니다."],
+    ['배게', '베개', "'베개'가 바른 말입니다."],
+    ['도데체', '도대체', "'도대체(都大體)'가 바른 말입니다."],
+    ['어의없', '어이없', "'어이없다'가 바른 말입니다."],
+    ['어이가없', '어이가 없', "'어이가 없다'는 띄어 씁니다."],
+    ['어줍잖', '어쭙잖', "'어쭙잖다'가 바른 말입니다."],
+    ['구지', '굳이', "'굳이'로 적고 [구지]로 읽습니다."],
+    ['궂이', '굳이', "'굳이'가 바른 말입니다."],
+    ['어짜피', '어차피', "'어차피(於此彼)'가 바른 말입니다."],
+    ['새벽녁', '새벽녘', "'새벽녘'이 바른 말입니다."],
+    ['뒤치닥거리', '뒤치다꺼리', "'뒤치다꺼리'가 바른 말입니다."],
+    ['내노라', '내로라', "'내로라하다'가 바른 말입니다."],
+    ['닥달', '닦달', "'닦달'이 바른 말입니다."],
+    ['애띤', '앳된', "'앳되다'가 바른 말입니다."],
+    ['갯수', '개수', "한자어끼리 합친 말에는 사이시옷을 넣지 않습니다."],
+    ['숫가락', '숟가락', "'숟가락'이 바른 말입니다."],
+    ['젖가락', '젓가락', "'젓가락'이 바른 말입니다."],
+    ['곱배기', '곱빼기', "'곱빼기'가 바른 말입니다."],
+    ['찌게', '찌개', "'찌개'가 바른 말입니다."],
+    ['육게장', '육개장', "'육개장'이 바른 말입니다."],
+    ['떡볶기', '떡볶이', "'떡볶이'가 바른 말입니다."],
+    ['설레임', '설렘', "'설레다'의 명사형은 '설렘'입니다."],
+    ['핼쓱', '핼쑥', "'핼쑥하다'가 바른 말입니다."],
+    ['널부러', '널브러', "'널브러지다'가 바른 말입니다."],
+    ['희노애락', '희로애락', "'희로애락'으로 적습니다."],
+    ['폐쇠', '폐쇄', "'폐쇄(閉鎖)'가 바른 말입니다."],
+    ['어떻해', '어떡해', "'어떻게 해'의 준말은 '어떡해'입니다."],
+    ['어떡게', '어떻게', "'어떻게'가 바른 말입니다."],
+    ['윗층', '위층', "뒷말이 된소리·거센소리면 사이시옷을 넣지 않습니다."],
+    ['윗쪽', '위쪽', "뒷말이 된소리·거센소리면 사이시옷을 넣지 않습니다."],
+    ['아랫층', '아래층', "뒷말이 된소리·거센소리면 사이시옷을 넣지 않습니다."],
+    ['뒷쪽', '뒤쪽', "뒷말이 된소리·거센소리면 사이시옷을 넣지 않습니다."],
+    ['뒷편', '뒤편', "뒷말이 된소리·거센소리면 사이시옷을 넣지 않습니다."],
+    ['윗어른', '웃어른', "위아래 대립이 없는 말은 '웃-'을 씁니다."],
+    ['얼만큼', '얼마큼', "'얼마만큼'의 준말은 '얼마큼'입니다."],
+    ['있읍니다', '있습니다', "'-습니다'가 표준입니다."],
+    ['없읍니다', '없습니다', "'-습니다'가 표준입니다."],
+    ['했읍니다', '했습니다', "'-습니다'가 표준입니다."],
+    ['있슴', '있음', "명사형 어미는 '-음'입니다."],
+    ['없슴', '없음', "명사형 어미는 '-음'입니다."],
+    ['했슴', '했음', "명사형 어미는 '-음'입니다."],
+    ['일부로', '일부러', "'일부러'가 바른 말입니다."],
+    ['괜시리', '괜스레', "'괜스레'가 바른 말입니다."],
+    ['잠궈', '잠가', "'잠그다'는 '잠가', '잠갔다'로 활용합니다."],
+    ['잠궜', '잠갔', "'잠그다'는 '잠가', '잠갔다'로 활용합니다."],
+    ['담궈', '담가', "'담그다'는 '담가', '담갔다'로 활용합니다."],
+    ['담궜', '담갔', "'담그다'는 '담가', '담갔다'로 활용합니다."],
+    ['치뤄', '치러', "'치르다'는 '치러', '치렀다'로 활용합니다."],
+    ['치뤘', '치렀', "'치르다'는 '치러', '치렀다'로 활용합니다."],
+    ['바꼈', '바뀌었', "'바뀌었'은 더 줄일 수 없습니다."],
+    ['사겼', '사귀었', "'사귀었'은 더 줄일 수 없습니다."],
+    ['제작년', '재작년', "'재작년(再昨年)'이 바른 말입니다."],
+    ['가르키', '가리키', "손가락 등으로 가리킬 때는 '가리키다', 지식을 전할 때는 '가르치다'입니다."],
+    ['문안하', '무난하', "'별 어려움이 없다'는 뜻이면 '무난(無難)하다'입니다."],
+    ['들어나', '드러나', "'드러나다'가 바른 말입니다."],
+    ['건들이', '건드리', "'건드리다'가 바른 말입니다."],
+    ['얽히고 섥힌', '얽히고설킨', "'얽히고설키다'가 바른 말입니다."],
+    ['섥히', '설키', "'얽히고설키다'의 '설키'로 적습니다."],
+    ['대가리', null, null], // 자리 표시 (비속어 판단 안 함)
+    ['돐', '돌', "'돌'이 표준어입니다."],
+    ['통채', '통째', "'통째'가 바른 말입니다."],
+    ['안밖', '안팎', "'안팎'이 바른 말입니다."],
+    ['짜집기', '짜깁기', "'짜깁기'가 바른 말입니다."],
+    ['우뢰', '우레', "'우레'가 표준어입니다."],
+    ['오도방정', '오두방정', "'오두방정'이 바른 말입니다."],
+    ['겉잡을 수 없', '걷잡을 수 없', "'걷잡다(거두어 잡다)'가 맞습니다."],
+    ['몇 번째', null, null],
+    ['비로서', '비로소', "'비로소'가 바른 말입니다."],
+    ['꺼꾸로', '거꾸로', "'거꾸로'가 바른 말입니다."],
+    ['곰방', '금방', "'금방'이 바른 말입니다."],
+    ['애시당초', '애당초', "'애당초' 또는 '애초'가 표준어입니다."],
+    ['나즈막', '나지막', "'나지막하다'가 바른 말입니다."],
+    ['육계장', '육개장', "'육개장'이 바른 말입니다."],
+    ['소고기 무국', '소고기 뭇국', "'뭇국'이 바른 말입니다."],
+    ['무우', '무', "'무'가 표준어입니다."],
+    ['짜투리', '자투리', "'자투리'가 바른 말입니다."],
+    ['웅큼', '움큼', "'움큼'이 바른 말입니다."],
+    ['개구장이', '개구쟁이', "'-쟁이'는 성질을 가진 사람에 붙습니다."],
+    ['멋장이', '멋쟁이', "'-쟁이'는 성질을 가진 사람에 붙습니다."],
+    ['담쟁이', null, null],
+    ['요컨데', '요컨대', "'요컨대'가 바른 말입니다."],
+    ['예컨데', '예컨대', "'예컨대'가 바른 말입니다."],
+    ['바램', '바람', "'바라다'의 명사형은 '바람'입니다. (색이 바랜 것은 '바램')"],
+    ['무릎쓰', '무릅쓰', "'무릅쓰다'가 바른 말입니다."],
+    ['헤매이', '헤매', "'헤매다'가 기본형이라 '헤매어'로 활용합니다."],
+    ['설레이', '설레', "'설레다'가 기본형입니다."],
+    ['개거품', '게거품', "'게거품'이 바른 말입니다."],
+    ['뇌졸증', '뇌졸중', "'뇌졸중(腦卒中)'이 바른 말입니다."],
+    ['임신중독증', null, null],
+    ['일사분란', '일사불란', "'일사불란(一絲不亂)'이 바른 말입니다."],
+    ['절대절명', '절체절명', "'절체절명(絶體絶命)'이 바른 말입니다."],
+    ['유도심문', '유도신문', "'유도신문(誘導訊問)'이 바른 말입니다."],
+    ['홀홀단신', '혈혈단신', "'혈혈단신(孑孑單身)'이 바른 말입니다."],
+    ['동거동락', '동고동락', "'동고동락(同苦同樂)'이 바른 말입니다."],
+    ['체면불구', '체면 불고', "'체면 불고(不顧)'가 바른 말입니다."],
+    ['풍지박산', '풍비박산', "'풍비박산(風飛雹散)'이 바른 말입니다."],
+    ['산수갑산', '삼수갑산', "'삼수갑산(三水甲山)'이 바른 말입니다."],
+    ['성대묘사', '성대모사', "'성대모사(聲帶模寫)'가 바른 말입니다."],
+    ['수근거', '수군거', "'수군거리다'가 바른 말입니다."],
+    ['수근대', '수군대', "'수군대다'가 바른 말입니다."],
+    ['몇년', '몇 년', "'몇'은 관형사라 뒷말과 띄어 씁니다."],
+  ];
+  for (const [w, r, msg] of words) if (r) add('spell', w, r, msg);
+
+  add('spell', '([가-힣]+)던지 말던지', '$1든지 말든지', "선택은 '-든지', 지난 일 회상은 '-던지'를 씁니다.");
+  add('spell', NB + '(뭐|어디|누구|언제|무엇이|무엇이)던지', '$1든지', "'무엇이든'처럼 가리지 않는다는 뜻은 '-든지'입니다.");
+  add('spell', '빨리 낳(으|아|았)', (m) => '빨리 ' + { '으': '나으', '아': '나아', '았': '나았' }[m[1]], "병이 나을 때는 '낫다'를 씁니다. '낳다'는 아이를 낳을 때 씁니다.");
+  add('spell', '(정답|답|문제)(을|를) 맞추', '$1$2 맞히', "정답을 골라내는 것은 '맞히다'입니다.");
+
+  /* ───────── 띄어쓰기 ───────── */
+  add('space', '안돼요' + NA, '안 돼요', "부정 부사 '안'은 뒷말과 띄어 씁니다.");
+  add('space', NB + '안돼' + NA, '안 돼', "부정 부사 '안'은 뒷말과 띄어 씁니다.");
+  add('space', NB + '안되(는|면|고|잖|니|지|어|었)', '안 되$1', "부정 부사 '안'은 뒷말과 띄어 씁니다.");
+  add('space', '(' + VL + ')수(도|가|밖에| ?있| ?없)', (m) => /있|없/.test(m[2]) ? m[1] + ' 수 ' + m[2].trim() : m[1] + ' 수' + m[2], "의존 명사 '수'는 앞말과 띄어 씁니다.");
+  add('space', NB + '안(했|해서|해요|한다|하고|하면|하는|할|좋|됐|돼서|먹|봤|왔|갔|가요|간다|줬|썼|났|읽|입었|들어|들려|맞|어울)', '안 $1', "부정 부사 '안'은 뒷말과 띄어 씁니다.");
+  add('space', '(' + VL + ')때(가|는|도|마다|까지|부터|면|에|의)?' + NA, '$1 때$2', "'때'는 명사라 앞말과 띄어 씁니다.");
+  add('space', '(' + VL + '|' + VN + ')것', '$1 것', "의존 명사 '것'은 앞말과 띄어 씁니다.");
+  add('space', '(' + VL + '|' + VN + ')거' + GEO_FOLLOW, '$1 거', "의존 명사 '거(것)'는 앞말과 띄어 씁니다.");
+  add('space', '(' + VL + '|' + VN + ')줄(알|몰)', '$1 줄 $2', "의존 명사 '줄'은 띄어 씁니다.");
+  add('space', '(' + VL + '|' + VN + ')적(이|은|도|있|없)', '$1 적$2', "'경험'을 뜻하는 '적'은 앞말과 띄어 씁니다.", (m) => true);
+  add('space', '(' + VL + '|' + VN + ')뿐(이|만)', '$1 뿐$2', "용언 뒤의 '뿐'은 의존 명사라 띄어 씁니다.");
+  add('space', '([가-힣])지(않|못)', '$1지 $2', "보조 용언 '않다·못하다'는 띄어 씁니다.", (m) => m[1] !== '그' && m[1] !== '아');
+  add('space', '([가-힣])지말(고|아|라|자|요|길)', '$1지 말$2', "보조 용언 '말다'는 띄어 씁니다.");
+  add('space', '([가-힣])고(있|싶|싶어)', '$1고 $2', "보조 용언 '있다·싶다'는 띄어 씁니다.", (m) => !/^(최|사|보|창|재|신|광|원|경|참|선|공|투|마|모|기|목|금|잔|소|등|비|서|여|요|호|교|노|고)$/.test(m[1]));
+  add('space', '수 밖에', '수밖에', "'밖에'가 '그것 말고는'이라는 뜻의 조사일 때는 붙여 씁니다.");
+  add('space', '(뿐) 이(다|에요|야|었|지)', '뿐이$2', "서술격 조사 '이다'는 앞말에 붙여 씁니다.");
+  add('space', ' {2,}', ' ', "띄어쓰기는 한 칸이면 충분합니다.");
+  add('space', '(?<=[가-힣a-zA-Z0-9]) +([.,!?])', '$1', "문장 부호는 앞말에 붙여 씁니다.");
+  add('space', '([가-힣])\\s*,(?=[가-힣])', '$1, ', "쉼표 뒤에는 한 칸 띄웁니다.");
+
+  /* ───────── 어색한 표현 (번역투·중복·이중 피동) ───────── */
+  const pas = [
+    ['되어지', '되', "'되다'는 이미 피동이라 '-어지다'를 겹쳐 쓰지 않습니다."],
+    ['되어진', '된', "이중 피동입니다. '된'으로 충분합니다."],
+    ['되어져', '되어', "이중 피동입니다."],
+    ['되어졌', '되었', "이중 피동입니다."],
+    ['보여지', '보이', "이중 피동입니다. '보이다'로 충분합니다."],
+    ['보여진', '보인', "이중 피동입니다. '보인'으로 충분합니다."],
+    ['보여져', '보여', "이중 피동입니다."],
+    ['보여졌', '보였', "이중 피동입니다."],
+    ['잊혀지', '잊히', "이중 피동입니다. '잊히다'로 충분합니다."],
+    ['잊혀진', '잊힌', "이중 피동입니다. '잊힌'으로 충분합니다."],
+    ['잊혀져', '잊혀', "이중 피동입니다."],
+    ['쓰여지', '쓰이', "이중 피동입니다. '쓰이다'로 충분합니다."],
+    ['쓰여진', '쓰인', "이중 피동입니다. '쓰인'으로 충분합니다."],
+    ['쓰여져', '쓰여', "이중 피동입니다."],
+    ['불리워', '불려', "이중 피동입니다. '불려'로 충분합니다."],
+    ['불리운', '불린', "이중 피동입니다."],
+    ['열려지', '열리', "이중 피동입니다."],
+    ['닫혀지', '닫히', "이중 피동입니다."],
+    ['짜여진', '짜인', "이중 피동입니다."],
+    ['놓여진', '놓인', "이중 피동입니다."],
+    ['믿겨지', '믿기', "이중 피동입니다. '믿기다'로 충분합니다."],
+  ];
+  for (const [w, r, msg] of pas) add('style', w, r, msg);
+
+  add('style', '(것|일|문제|점|측면|과정|경우|관계|사회|교육|삶|인생|업무|운영|개발|연구|정책)에 있어서?' + NA, '$1에서', "'~에 있어서'는 일본어식 번역투입니다. '~에서', '~할 때' 등으로 바꿔 보세요.");
+  add('style', '함에 있어서?', '할 때', "'~함에 있어'는 번역투입니다. '~할 때'가 자연스럽습니다.");
+  add('style', '에게 있어서?', '에게', "'~에게 있어서'는 번역투입니다. '~에게'로 충분합니다.");
+  add('style', '에도 불구하고', '에도', "'~에도 불구하고'는 '~에도', '~지만'으로 줄여도 뜻이 같습니다.");
+  add('style', '에 다름 아니', '와 다름없', "'~에 다름 아니다'는 일본어식 표현입니다.");
+  add('style', '(회의|모임|만남|대화|간담회|시간|휴식|기자회견)(을|를) 가(지|졌|집|져)', (m) => m[1] + m[2] + ' ' + ({ '지': '하', '졌': '했', '집': '합', '져': '해' })[m[3]], "'~을 가지다'는 영어 have의 번역투입니다. '하다', '열다'가 자연스럽습니다.");
+  add('style', '중에 있습니다', '중입니다', "'~하는 중에 있다'는 '~하는 중이다', '~하고 있다'로 쓰면 자연스럽습니다.");
+  add('style', '중에 있다' + NA, '중이다', "'~하는 중에 있다'는 '~하는 중이다'로 쓰면 자연스럽습니다.");
+  add('style', '중에 있어요', '중이에요', "'~하는 중에 있다'는 '~하는 중이다'로 쓰면 자연스럽습니다.");
+  add('style', '에 위치하고 있(다|습니다|어요|는)', '에 있$1', "'~에 위치하고 있다'는 '~에 있다'로 충분합니다.");
+  add('style', '에 위치해 있(다|습니다|어요|는)', '에 있$1', "'~에 위치해 있다'는 '~에 있다'로 충분합니다.");
+  add('style', '하는 것이 필요합니다', '해야 합니다', "'~하는 것이 필요하다'보다 '~해야 한다'가 간결합니다.");
+  add('style', '하는 것이 필요하다', '해야 한다', "'~하는 것이 필요하다'보다 '~해야 한다'가 간결합니다.");
+  add('style', '하는 것이 가능합니다', '할 수 있습니다', "'~하는 것이 가능하다'보다 '~할 수 있다'가 자연스럽습니다.");
+  add('style', '하는 것이 가능하다', '할 수 있다', "'~하는 것이 가능하다'보다 '~할 수 있다'가 자연스럽습니다.");
+  add('style', '(소개|설득|금지|접수)시(켜|키|켰|킨|킬)', (m) => m[1] + ({ '켜': '해', '키': '하', '켰': '했', '킨': '한', '킬': '할' })[m[2]], "'-시키다'는 남에게 시킬 때만 씁니다. 직접 하는 일은 '-하다'로 씁니다.");
+  add('style', '(?<=^|[\\s(])보다 (나은|많은|좋은|큰|빠른|높은|낮은|적은|효율적|편리한|정확한|나아)', '더 $1', "부사 '보다'는 번역투입니다. '더'로 쓰면 자연스럽습니다.");
+  add('style', '가장 최(고|초|근|신|대|소|선|상|하|악|적)', '최$1', "'최(最)'에 이미 '가장'의 뜻이 있어 겹칩니다.");
+  add('style', '(많은|여러|모든|수많은|각각의) ([가-힣]{1,4})들(?=[이은을의과도에]|' + NA.slice(0) + ')', '$1 $2', "'많은', '여러' 같은 말이 이미 복수를 나타내 '-들'이 없어도 됩니다.");
+  const dup = [
+    ['미리 예약', '예약'], ['미리 예고', '예고'], ['미리 예습', '예습'], ['미리 대비', '대비'], ['미리 준비', '준비'],
+    ['다시 재개', '재개'], ['다시 재발', '재발'], ['다시 재방송', '재방송'], ['다시 재확인', '재확인'],
+    ['과반수 이상', '과반수'], ['남은 여생', '여생'], ['역전 앞', '역전'], ['함께 동참', '동참'],
+    ['서로 상의', '상의'], ['새로 신설', '신설'], ['가까운 근방', '근방'], ['어려운 난관', '난관'],
+    ['자리에 착석', '착석'], ['지난 과거', '과거'], ['돌이켜 회고', '회고'], ['같은 동포', '동포'],
+    ['아직 미정', '미정'], ['아직 미완성', '미완성'], ['공기를 환기', '환기'],
+    ['앞으로 전진', '전진'], ['뒤로 후퇴', '후퇴'], ['간단히 요약', '요약'], ['따뜻한 온정', '온정'],
+    ['그대로 방치', '방치'], ['완전히 근절', '근절'],
+  ];
+  for (const [w, r] of dup) add('style', w, r, "같은 뜻이 겹친 표현입니다. 한쪽만 써도 충분합니다.");
+  add('style', '(?<![가-힣])약 ([0-9,.]+ ?[가-힣%]*) (정도|가량|쯤)', '약 $1', "'약'과 '정도·가량'은 뜻이 겹칩니다. 하나만 쓰세요.");
+  add('style', '에 의해(서)?', null, "피동 '~에 의해'는 번역투일 수 있습니다. 주어를 살려 능동문으로 바꿔 보세요.");
+  add('style', '(?<=[가-힣])로부터', null, "'~로부터'는 번역투일 수 있습니다. 사람이면 '~에게서', 장소면 '~에서'를 써 보세요.");
+  add('style', '것으로 보여진다|것으로 보인다', null, "'~것으로 보인다'는 주어가 흐려집니다. 근거와 함께 단정해 보세요.");
+  add('style', '라고 할 수 있(다|습니다)', null, "'~라고 할 수 있다'는 주장을 약하게 만듭니다. '~이다'로 단정할 수 있는지 보세요.");
+
+  /* ───────── 엔진 ───────── */
+  function syl(ch, newJong) {
+    const c = ch.charCodeAt(0) - 0xac00;
+    return String.fromCharCode(0xac00 + c - (c % 28) + newJong);
+  }
+
+  function expand(rep, m) {
+    if (typeof rep === 'function') return rep(m);
+    return rep.replace(/\$(\d)/g, (_, n) => m[+n] || '');
+  }
+
+  function check(text) {
+    const found = [];
+    R.forEach((rule, order) => {
+      rule.re.lastIndex = 0;
+      let m;
+      while ((m = rule.re.exec(text))) {
+        if (m[0].length === 0) { rule.re.lastIndex++; continue; }
+        if (rule.test && !rule.test(m, text)) continue;
+        const rep = rule.rep == null ? null : expand(rule.rep, m);
+        if (rep === m[0]) continue;
+        found.push({ start: m.index, end: m.index + m[0].length, orig: m[0], rep, type: rule.type, msg: rule.msg, order, src: 'rule' });
+      }
+    });
+    // 앞선 규칙 우선, 겹치는 것은 버림
+    found.sort((a, b) => a.order - b.order || a.start - b.start);
+    const kept = [];
+    for (const f of found) if (!kept.some((k) => f.start < k.end && k.start < f.end)) kept.push(f);
+    // 긴 문장 안내
+    const sentRe = /[^.!?\n]+[.!?]?/g;
+    let s;
+    while ((s = sentRe.exec(text))) {
+      const t = s[0].trim();
+      if (t.replace(/\s/g, '').length > 90) {
+        const off = s.index + s[0].indexOf(t);
+        kept.push({ start: off, end: off + t.length, orig: t, rep: null, type: 'style', msg: '문장이 깁니다(공백 제외 ' + t.replace(/\s/g, '').length + '자). 두 문장으로 나누면 읽기 쉽습니다.', order: 9999, src: 'rule', long: true });
+      }
+    }
+    return kept.sort((a, b) => a.start - b.start);
+  }
+
+
+  const api = { check, ruleCount: R.length, jong };
+  root.KoSpell = api;
+  if (typeof module !== 'undefined') module.exports = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const ta = $('text'), bd = $('backdrop'), list = $('list');
+  const TYPES = { spell: '맞춤법', space: '띄어쓰기', style: '표현' };
+  const SAMPLE = '오랫만에 친구를 만났는데 왠일인지 기분이 안좋았다. 내일 다시 연락할께요.\n이 문제에 있어서 우리는 보다 나은 방법을 찾을수 있다. 회의를 가지는 것이 필요합니다.\n몇일 전부터 설겆이를 하고있는데 금새 끝나서 그런거 같아요. 많은 사람들이 미리 예약했지만 저는 아직 안했어요.';
+
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('bareungeul.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('bareungeul.' + k, JSON.stringify(v)); } catch (e) {} },
+  };
+
+  const S = {
+    text: store.get('draft', SAMPLE),
+    rule: [], ai: [],
+    ignored: new Set(),
+    filter: 'all',
+    active: -1,
+    level: store.get('level', 'normal'),
+    auto: store.get('auto', true),
+    model: store.get('model', 'claude-sonnet-5-5'),
+    key: store.get('key', ''),
+    busy: false,
+  };
+
+  /* AI 연결: Claude 화면 안에서는 사용자 계정으로, 앱에서는 API 키로 */
+  const inClaude = !!(window.claude && typeof window.claude.use === 'function');
+  const samplePromise = inClaude ? window.claude.use('sample').catch(() => null) : Promise.resolve(null);
+
+  /* ───── 문제 목록 ───── */
+  const sig = (i) => i.type + '|' + i.orig + '|' + i.rep;
+  function issues() {
+    const ai = S.ai.filter((a) => !S.ignored.has(sig(a)));
+    const rules = S.rule.filter((r) => !S.ignored.has(sig(r)) && !ai.some((a) => r.start < a.end && a.start < r.end));
+    return ai.concat(rules).sort((a, b) => a.start - b.start || (a.long ? 1 : -1));
+  }
+  function visible(all) {
+    return S.filter === 'all' ? all : S.filter === 'ai' ? all.filter((i) => i.src === 'ai') : all.filter((i) => i.type === S.filter);
+  }
+
+  function runRules() { S.rule = KoSpell.check(S.text); }
+
+  /* ───── 화면 그리기 ───── */
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const show = (s) => s === '' ? '<span class="vis">(삭제)</span>' : esc(s).replace(/ /g, ' ').replace(/\n/g, '<span class="vis">↵</span>');
+
+  function renderBackdrop(all) {
+    const t = S.text; let out = '', pos = 0, last = -1;
+    all.forEach((i, idx) => {
+      if (i.long || i.start < last) return;
+      out += esc(t.slice(pos, i.start));
+      out += '<mark class="t-' + i.type + (idx === S.active ? ' active' : '') + '" data-i="' + idx + '">' + esc(t.slice(i.start, i.end)) + '</mark>';
+      pos = last = i.end;
+    });
+    bd.innerHTML = out + esc(t.slice(pos)) + ' ';
+  }
+
+  function renderMeter() {
+    const t = S.text, n = t.length, ns = t.replace(/\s/g, '').length;
+    const sheets = Math.max(0, Math.ceil(n / 200));
+    const sents = (t.match(/[^.!?\n]+[.!?]?/g) || []).filter((x) => x.trim()).length;
+    $('meter').innerHTML = '<span>공백 포함 <b>' + n.toLocaleString() + '</b>자</span><span>공백 제외 <b>' + ns.toLocaleString() + '</b>자</span><span>문장 <b>' + sents + '</b>개</span><span>원고지 <b>' + sheets + '</b>매</span>';
+  }
+
+  function renderFilters(all) {
+    const c = { all: all.length, spell: 0, space: 0, style: 0, ai: 0 };
+    all.forEach((i) => { c[i.type]++; if (i.src === 'ai') c.ai++; });
+    const defs = [['all', '전체', ''], ['spell', '맞춤법', 'spell'], ['space', '띄어쓰기', 'space'], ['style', '표현', 'style']];
+    if (c.ai) defs.push(['ai', 'AI 제안', 'ai']);
+    $('filters').innerHTML = defs.map(([k, label, dot]) => '<button class="chip" type="button" data-f="' + k + '" aria-pressed="' + (S.filter === k) + '">' + (dot ? '<i class="dot ' + dot + '"></i>' : '') + label + ' ' + c[k] + '</button>').join('');
+  }
+
+  function render() {
+    const all = issues();
+    if (S.active >= all.length) S.active = -1;
+    renderBackdrop(all);
+    renderMeter();
+    renderFilters(all);
+    const vis = visible(all);
+    const fixable = vis.filter((i) => i.rep != null).length;
+    $('bulkInfo').textContent = vis.length ? '고칠 곳 ' + vis.length + '개' + (fixable < vis.length ? ' · 조언 ' + (vis.length - fixable) + '개' : '') : '';
+    $('applyAll').hidden = fixable < 2;
+    if (!S.text.trim()) { list.innerHTML = '<li class="empty"><strong>글을 넣어 주세요</strong>붙여 넣으면 바로 검사합니다.</li>'; return; }
+    if (!vis.length) { list.innerHTML = '<li class="empty"><strong>고칠 곳을 찾지 못했어요</strong>문장을 더 다듬고 싶다면 ‘AI로 문장 다듬기’를 눌러 보세요.</li>'; return; }
+    list.innerHTML = vis.map((i) => {
+      const idx = all.indexOf(i);
+      return '<li class="item ' + i.type + (idx === S.active ? ' active' : '') + '" data-i="' + idx + '">' +
+        '<div class="meta"><span class="tag ' + i.type + '">' + TYPES[i.type] + '</span>' + (i.src === 'ai' ? '<span class="tag ai">AI</span>' : '') + '</div>' +
+        '<div class="fix">' + (i.rep == null ? '<span>' + show(i.long ? i.orig.slice(0, 40) + (i.orig.length > 40 ? '…' : '') : i.orig) + '</span>' : '<del>' + show(i.orig) + '</del><span class="arrow">→</span><ins>' + show(i.rep) + '</ins>') + '</div>' +
+        '<p class="why">' + esc(i.msg || '') + '</p>' +
+        '<div class="row">' + (i.rep != null ? '<button class="mini go" type="button" data-act="apply">바꾸기</button>' : '') + '<button class="mini" type="button" data-act="skip">건너뛰기</button></div></li>';
+    }).join('');
+  }
+
+  /* ───── 글 바꾸기 ───── */
+  function setText(t, keepAI) {
+    const old = S.text; S.text = t; ta.value = t; store.set('draft', t);
+    if (keepAI && S.ai.length) relocateAI(old); else if (!keepAI) S.ai = [];
+    runRules(); grow(); render();
+  }
+
+  function relocateAI() {
+    S.ai = S.ai.map((a) => {
+      if (S.text.slice(a.start, a.end) === a.orig) return a;
+      let best = -1, d = 1e9, p = S.text.indexOf(a.orig);
+      while (p !== -1) { if (Math.abs(p - a.start) < d) { d = Math.abs(p - a.start); best = p; } p = S.text.indexOf(a.orig, p + 1); }
+      return best < 0 ? null : Object.assign({}, a, { start: best, end: best + a.orig.length });
+    }).filter(Boolean);
+  }
+
+  function apply(i) {
+    const t = S.text;
+    if (t.slice(i.start, i.end) !== i.orig) { toast('글이 바뀌어 이 제안을 적용할 수 없어요.'); return; }
+    const delta = i.rep.length - (i.end - i.start);
+    S.ai = S.ai.filter((a) => a !== i && !(a.start < i.end && i.start < a.end)).map((a) => a.start >= i.end ? Object.assign({}, a, { start: a.start + delta, end: a.end + delta }) : a);
+    S.text = t.slice(0, i.start) + i.rep + t.slice(i.end);
+    ta.value = S.text; store.set('draft', S.text);
+    S.active = -1; runRules(); grow(); render();
+  }
+
+  function applyAll() {
+    const vis = visible(issues()).filter((i) => i.rep != null && !i.long);
+    let t = S.text, n = 0, lastStart = Infinity;
+    vis.sort((a, b) => b.start - a.start).forEach((i) => {
+      if (i.end > lastStart || t.slice(i.start, i.end) !== i.orig) return;
+      t = t.slice(0, i.start) + i.rep + t.slice(i.end); lastStart = i.start; n++;
+    });
+    S.ai = S.ai.filter((a) => !vis.includes(a));
+    setText(t, true);
+    toast(n + '곳을 바꿨어요.');
+  }
+
+  /* ───── AI ───── */
+  const LEVEL = {
+    light: '맞춤법·띄어쓰기·문법 오류만 고쳐라. 표현은 명백히 틀린 경우가 아니면 손대지 마라.',
+    normal: '맞춤법·띄어쓰기·문법 오류를 고치고, 어색하거나 번역투인 표현, 군더더기, 중복 표현을 자연스럽게 다듬어라. 문장 구조는 꼭 필요할 때만 바꿔라.',
+    strong: '맞춤법·띄어쓰기·문법 오류를 고치고, 어색한 문장은 더 읽기 쉽고 자연스러운 한국어 문장으로 적극적으로 고쳐 써라. 긴 문장은 나눠도 된다.',
+  };
+  function prompt(text) {
+    return '너는 한국어 교정·교열 전문가다. 아래 글을 검토하라.\n' + LEVEL[S.level] + '\n\n' +
+      '지킬 것:\n- 글쓴이의 뜻, 말투(존댓말·반말), 문체는 그대로 둔다.\n- 국립국어원 표준어 규정과 한글 맞춤법을 따른다.\n' +
+      '- edits의 original은 원문에 글자 하나 다르지 않게 그대로 있는 연속된 부분이어야 한다. 가능한 한 짧게(어절이나 구 단위) 잡고, 문장을 고쳐 쓸 때만 문장 전체를 잡는다.\n' +
+      '- type은 "맞춤법", "띄어쓰기", "문법", "표현" 중 하나.\n- reason은 왜 고치는지 한국어 한 문장.\n- 고칠 곳이 없으면 edits는 빈 배열.\n\n' +
+      '다음 형식의 JSON만 출력하라:\n{"edits":[{"original":"원문 부분","suggestion":"고친 말","type":"표현","reason":"이유"}],"revised":"모든 수정을 반영한 전체 글"}\n\n글:\n<<<\n' + text + '\n>>>';
+  }
+  function parseJSON(s) {
+    try { return JSON.parse(s); } catch (e) {}
+    const a = s.indexOf('{'), b = s.lastIndexOf('}');
+    if (a >= 0 && b > a) { try { return JSON.parse(s.slice(a, b + 1)); } catch (e) {} }
+    throw { code: 'invalid_json' };
+  }
+  async function askViaKey(text) {
+    if (!S.key) throw { code: 'no_key' };
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': S.key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: S.model, max_tokens: 8000, messages: [{ role: 'user', content: prompt(text) }] }),
+    });
+    if (!res.ok) {
+      let m = ''; try { m = (await res.json()).error.message; } catch (e) {}
+      throw { code: res.status === 401 ? 'bad_key' : res.status === 429 ? 'rate_limited' : 'http', message: m, status: res.status };
+    }
+    const j = await res.json();
+    return parseJSON((j.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(''));
+  }
+  const TYPE_MAP = { '맞춤법': 'spell', '문법': 'spell', '띄어쓰기': 'space', '표현': 'style' };
+
+  async function runAI() {
+    const text = S.text;
+    if (!text.trim()) { toast('먼저 글을 넣어 주세요.'); return; }
+    if (text.length > 20000) { note('한 번에 2만 자까지 다듬을 수 있어요. 글을 나눠서 넣어 주세요.', true); return; }
+    setBusy(true); note('AI가 문장을 읽고 있어요…');
+    try {
+      const sample = await samplePromise;
+      let out;
+      if (sample) out = await sample.json(prompt(text), { modelTier: S.level === 'strong' ? 'complex' : 'default' });
+      else if (inClaude) throw { code: 'not_granted' };
+      else out = await askViaKey(text);
+      if (S.text !== text) { note('검사하는 동안 글이 바뀌었어요. 다시 눌러 주세요.', true); return; }
+      const edits = Array.isArray(out && out.edits) ? out.edits : [];
+      let cursor = 0; const ai = [];
+      edits.forEach((e) => {
+        const o = String(e.original || ''), r = String(e.suggestion == null ? '' : e.suggestion);
+        if (!o || o === r) return;
+        let p = text.indexOf(o, cursor); if (p < 0) p = text.indexOf(o);
+        if (p < 0 || ai.some((a) => p < a.end && a.start < p + o.length)) return;
+        ai.push({ start: p, end: p + o.length, orig: o, rep: r, type: TYPE_MAP[e.type] || 'style', msg: String(e.reason || ''), src: 'ai' });
+        cursor = p + o.length;
+      });
+      S.ai = ai; S.filter = 'all';
+      const rev = typeof out.revised === 'string' ? out.revised.trim() : '';
+      $('revisedBox').hidden = !rev || rev === text.trim();
+      $('revisedBody').textContent = rev;
+      note(ai.length ? 'AI가 ' + ai.length + '곳을 제안했어요. 교정 메모에서 하나씩 고르거나, 다듬은 글을 통째로 쓸 수 있어요.' : 'AI도 고칠 곳을 찾지 못했어요. 잘 쓴 글이에요.');
+      render();
+    } catch (e) {
+      const c = e && e.code;
+      const msg = {
+        no_key: 'AI를 쓰려면 설정에서 Claude API 키를 넣어 주세요.',
+        bad_key: 'API 키가 맞지 않아요. 설정에서 키를 확인해 주세요.',
+        not_granted: '이 화면에서는 AI를 쓸 수 없어요. AI 사용을 허용했는지 확인해 주세요.',
+        sampling_disabled: '이 계정에서는 AI를 쓸 수 없어요.',
+        rate_limited: '요청이 너무 많아요. 잠시 뒤에 다시 눌러 주세요.',
+        invalid_json: 'AI 답을 읽지 못했어요. 다시 한 번 눌러 주세요.',
+        refused: 'AI가 이 글을 다듬지 않았어요. 내용을 바꿔서 다시 해 보세요.',
+        cancelled: '취소했어요.',
+        http: 'AI 서버 오류가 났어요(' + (e && e.status) + '). ' + ((e && e.message) || '잠시 뒤에 다시 해 보세요.'),
+      }[c] || (e instanceof TypeError ? '인터넷에 연결되어 있는지 확인해 주세요.' : 'AI 연결에 실패했어요. 잠시 뒤에 다시 해 보세요.');
+      note(msg, true);
+      if (c === 'no_key' || c === 'bad_key') openSettings();
+    } finally { setBusy(false); }
+  }
+  function setBusy(b) {
+    S.busy = b; const btn = $('runAI');
+    btn.disabled = b; btn.innerHTML = b ? '<i class="sp"></i>다듬는 중' : 'AI로 문장 다듬기';
+  }
+  function note(t, err) { const n = $('aiNote'); n.textContent = t; n.classList.toggle('err', !!err); }
+
+  /* ───── 기타 ───── */
+  let toastT;
+  function toast(t) { const el = $('toast'); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 2200); }
+  function grow() { ta.style.height = 'auto'; ta.style.height = Math.max(260, ta.scrollHeight) + 'px'; }
+  async function copy(t) {
+    try { await navigator.clipboard.writeText(t); toast('복사했어요.'); }
+    catch (e) { ta.focus(); ta.select(); toast('글을 선택했어요. 길게 눌러 복사하세요.'); }
+  }
+  function focusIssue(idx, scroll) {
+    S.active = idx; render();
+    if (scroll) {
+      const li = list.querySelector('.item[data-i="' + idx + '"]');
+      if (li) li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } else {
+      const mk = bd.querySelector('mark[data-i="' + idx + '"]');
+      if (mk) { const r = mk.getBoundingClientRect(); if (r.top < 60 || r.bottom > innerHeight - 40) window.scrollBy({ top: r.top - innerHeight / 3, behavior: 'smooth' }); }
+    }
+  }
+
+  let deb;
+  ta.addEventListener('input', () => {
+    S.text = ta.value; store.set('draft', S.text); grow();
+    clearTimeout(deb);
+    if (S.auto) deb = setTimeout(() => { relocateAI(); runRules(); render(); }, 250);
+    else { relocateAI(); S.rule = S.rule.filter((r) => S.text.slice(r.start, r.end) === r.orig); render(); }
+  });
+  const caretPick = () => {
+    const p = ta.selectionStart, all = issues();
+    const idx = all.findIndex((i) => !i.long && p >= i.start && p <= i.end);
+    if (idx !== -1 && idx !== S.active) focusIssue(idx, true);
+  };
+  ta.addEventListener('click', caretPick);
+  ta.addEventListener('keyup', (e) => { if (e.key.startsWith('Arrow')) caretPick(); });
+
+  list.addEventListener('click', (e) => {
+    const li = e.target.closest('.item'); if (!li) return;
+    const all = issues(), i = all[+li.dataset.i]; if (!i) return;
+    const act = e.target.closest('[data-act]');
+    if (act && act.dataset.act === 'apply') apply(i);
+    else if (act && act.dataset.act === 'skip') { S.ignored.add(sig(i)); S.active = -1; render(); }
+    else focusIssue(+li.dataset.i, false);
+  });
+  $('filters').addEventListener('click', (e) => { const b = e.target.closest('[data-f]'); if (b) { S.filter = b.dataset.f; S.active = -1; render(); } });
+  $('applyAll').addEventListener('click', applyAll);
+  $('runCheck').addEventListener('click', () => { S.ignored.clear(); runRules(); render(); const n = issues().length; toast(n ? n + '곳을 찾았어요.' : '고칠 곳을 찾지 못했어요.'); });
+  $('runAI').addEventListener('click', runAI);
+  $('pasteHint').addEventListener('click', () => { setText(SAMPLE); $('revisedBox').hidden = true; });
+  $('clearText').addEventListener('click', () => { setText(''); $('revisedBox').hidden = true; note(''); ta.focus(); });
+  $('copyText').addEventListener('click', () => copy(S.text));
+  $('copyRevised').addEventListener('click', () => copy($('revisedBody').textContent));
+  $('useRevised').addEventListener('click', () => { setText($('revisedBody').textContent); $('revisedBox').hidden = true; note('다듬은 글을 원고에 넣었어요.'); });
+
+  /* 설정 */
+  function openSettings() {
+    $('apiKey').value = S.key; $('model').value = S.model; $('auto').checked = S.auto;
+    [...$('level').children].forEach((b) => b.setAttribute('aria-pressed', b.dataset.v === S.level));
+    $('settings').hidden = false;
+  }
+  $('openSettings').addEventListener('click', openSettings);
+  $('level').addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (!b) return; [...$('level').children].forEach((x) => x.setAttribute('aria-pressed', x === b)); });
+  $('closeSettings').addEventListener('click', () => {
+    S.key = $('apiKey').value.trim(); S.model = $('model').value; S.auto = $('auto').checked;
+    const lv = $('level').querySelector('[aria-pressed="true"]'); if (lv) S.level = lv.dataset.v;
+    store.set('key', S.key); store.set('model', S.model); store.set('auto', S.auto); store.set('level', S.level);
+    $('settings').hidden = true; toast('저장했어요.');
+  });
+  $('settings').addEventListener('click', (e) => { if (e.target.id === 'settings') $('settings').hidden = true; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('settings').hidden = true; });
+
+  if (inClaude) {
+    $('keySet').hidden = true; $('modelSet').hidden = true;
+    $('envNote').textContent = 'AI 다듬기는 지금 보고 있는 Claude 계정으로 실행돼요. 처음 한 번 사용 허용을 묻습니다.';
+  } else {
+    $('envNote').textContent = '맞춤법 검사는 인터넷 없이 기기 안에서 돌아가요. AI 다듬기만 API 키가 필요합니다.';
+  }
+  samplePromise.then((s) => { if (inClaude && !s) note('이 화면에서는 AI 다듬기를 쓸 수 없어요. 맞춤법 검사는 그대로 쓸 수 있습니다.', true); });
+
+  ta.value = S.text; runRules(); grow(); render();
+  window.addEventListener('resize', grow);
+})();
+</script>
+</body></html>
